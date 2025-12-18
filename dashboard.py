@@ -580,28 +580,67 @@ elif page == "Prediksi":
                 # Form input
                 col1, col2 = st.columns(2)
                 
+                st.info("💡 **Tips:** Isi data dengan benar untuk mendapatkan prediksi yang akurat. Gunakan data aktual anak untuk hasil terbaik.")
+                
+                # Contoh nilai untuk testing - bisa diubah sesuai kebutuhan
+                st.markdown("**Contoh Data untuk Testing:**")
+                example_col1, example_col2, example_col3 = st.columns(3)
+                with example_col1:
+                    if st.button("Contoh: Anak Normal (24 bulan)", use_container_width=True):
+                        st.session_state.test_age = 24
+                        st.session_state.test_birth_weight = 3.2
+                        st.session_state.test_birth_length = 48.5
+                        st.session_state.test_body_weight = 12.5
+                        st.session_state.test_body_length = 85.0
+                        st.rerun()
+                with example_col2:
+                    if st.button("Contoh: Berisiko Stunting", use_container_width=True):
+                        st.session_state.test_age = 30
+                        st.session_state.test_birth_weight = 2.5
+                        st.session_state.test_birth_length = 47.0
+                        st.session_state.test_body_weight = 9.0
+                        st.session_state.test_body_length = 75.0
+                        st.rerun()
+                with example_col3:
+                    if st.button("Reset ke Default", use_container_width=True):
+                        if 'test_age' in st.session_state:
+                            del st.session_state.test_age
+                        st.rerun()
+                
                 with col1:
-                    sex_input = st.selectbox("Jenis Kelamin", ["Male", "Female"])
-                    age_input = st.number_input("Umur (bulan)", min_value=0, max_value=120, value=24)
-                    birth_weight = st.number_input("Berat Lahir (kg)", min_value=0.0, max_value=10.0, value=3.0, step=0.1)
-                    birth_length = st.number_input("Panjang Lahir (cm)", min_value=0.0, max_value=100.0, value=48.0, step=0.1)
+                    sex_input = st.selectbox("Jenis Kelamin", ["Male", "Female"], help="Pilih jenis kelamin anak")
+                    age_input = st.number_input("Umur (bulan)", min_value=0, max_value=120, 
+                                                value=st.session_state.get('test_age', 24), 
+                                                help="Umur anak dalam bulan (0-120 bulan)")
+                    birth_weight = st.number_input("Berat Lahir (kg)", min_value=0.0, max_value=10.0, 
+                                                  value=st.session_state.get('test_birth_weight', 3.2), step=0.1,
+                                                  help="Berat badan saat lahir dalam kilogram")
+                    birth_length = st.number_input("Panjang Lahir (cm)", min_value=0.0, max_value=100.0, 
+                                                  value=st.session_state.get('test_birth_length', 48.5), step=0.1,
+                                                  help="Panjang badan saat lahir dalam centimeter")
                 
                 with col2:
-                    body_weight = st.number_input("Berat Badan (kg)", min_value=0.0, max_value=50.0, value=10.0, step=0.1)
-                    body_length = st.number_input("Panjang Badan (cm)", min_value=0.0, max_value=150.0, value=75.0, step=0.1)
-                    asi_input = st.selectbox("ASI Eksklusif", ["Yes", "No"])
+                    body_weight = st.number_input("Berat Badan Saat Ini (kg)", min_value=0.0, max_value=50.0, 
+                                                  value=st.session_state.get('test_body_weight', 12.5), step=0.1,
+                                                  help="Berat badan anak saat ini dalam kilogram")
+                    body_length = st.number_input("Panjang Badan Saat Ini (cm)", min_value=0.0, max_value=150.0, 
+                                                  value=st.session_state.get('test_body_length', 85.0), step=0.1,
+                                                  help="Panjang badan anak saat ini dalam centimeter")
+                    asi_input = st.selectbox("ASI Eksklusif", ["Yes", "No"], 
+                                            help="Apakah anak mendapat ASI eksklusif?")
                 
                 st.markdown("---")
                 
                 # Fungsi preprocessing untuk mengubah input menjadi format yang diharapkan model
                 def preprocess_input(sex, age, birth_weight, birth_length, body_weight, body_length, asi):
                     # Normalisasi berdasarkan range dari dataset (dari stunting_all_dl.csv)
-                    # Range maksimum untuk normalisasi
-                    age_max = 60.0
-                    birth_weight_max = 4.5
-                    birth_length_max = 55.0
-                    body_weight_max = 20.0
-                    body_length_max = 110.0
+                    # Range maksimum untuk normalisasi - disesuaikan dengan data training
+                    # Dari analisis data: Age max ~60, tapi normalisasi menggunakan range yang lebih besar
+                    age_max = 60.0  # Maksimum umur dalam bulan
+                    birth_weight_max = 4.5  # Maksimum berat lahir (kg)
+                    birth_length_max = 55.0  # Maksimum panjang lahir (cm)
+                    body_weight_max = 20.0  # Maksimum berat badan (kg)
+                    body_length_max = 110.0  # Maksimum panjang badan (cm)
                     
                     # Normalisasi fitur numerik (0-1 scaling) - sesuai dengan data training
                     age_norm = float(age) / age_max if age_max > 0 else 0.0
