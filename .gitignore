@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Streamlit
+.streamlit/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (optional - uncomment if you don't want to commit model)
+# *.h5
+# *.hdf5
+# *.pkl
+
+# Data files (optional - uncomment if you don't want to commit large datasets)
+# *.csv
+# *.xlsx
+
+# Logs
+*.log
+
