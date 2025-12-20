@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import os
 
-# Import untuk model (opsional - hanya jika file model ada)
+# Import untuk model
 try:
     from tensorflow import keras
     MODEL_AVAILABLE = True
@@ -20,17 +20,216 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load data
+# Konstanta
+COLORS = {
+    'no_stunting': '#2ecc71',
+    'stunting': '#e74c3c',
+    'asi_yes': '#3498db',
+    'asi_no': '#e74c3c'
+}
+
+DATASETS = {
+    'Balanced': 'dataset_stunting_balanced.csv',
+    'ML Train Processed': 'dataset_ml_train_processed.csv',
+    'DL Test Processed': 'dataset_dl_test_processed.csv'
+}
+
+MODEL_PATH = 'best_stunting_model.h5'
+
+# ==================== FUNGSI HELPER ====================
+
 @st.cache_data
-def load_data():
-    df = pd.read_csv('dataset_stunting_balanced.csv')
+def load_data(dataset_name):
+    """Load dataset berdasarkan pilihan"""
+    file_path = DATASETS[dataset_name]
+    df = pd.read_csv(file_path)
     return df
 
-df = load_data()
+def normalize_column_names(df):
+    """Normalisasi nama kolom untuk kompatibilitas antar dataset"""
+    df = df.copy()
+    # Mapping kolom untuk dataset yang sudah diproses
+    if 'Sex_Encoded' in df.columns:
+        df['Sex'] = df['Sex_Encoded'].map({0: 'Male', 1: 'Female'})
+    if 'ASI_Eksklusif_Encoded' in df.columns:
+        df['ASI_Eksklusif'] = df['ASI_Eksklusif_Encoded'].map({0: 'No', 1: 'Yes'})
+    return df
 
-# Sidebar
+def create_stunting_label(df):
+    """Buat label stunting untuk visualisasi"""
+    if 'Stunting' in df.columns:
+        df['Stunting_Label'] = df['Stunting'].map({0: 'Tidak Stunting', 1: 'Stunting'})
+    return df
+
+def create_crosstab_melted(df, index_col, value_col='Stunting'):
+    """Helper untuk membuat crosstab yang sudah di-melt"""
+    crosstab = pd.crosstab(df[index_col], df[value_col])
+    crosstab_reset = crosstab.reset_index()
+    melted = pd.melt(
+        crosstab_reset,
+        id_vars=[index_col],
+        value_vars=[0, 1],
+        var_name=value_col,
+        value_name='Jumlah'
+    )
+    melted['Stunting_Label'] = melted[value_col].map({0: 'Tidak Stunting', 1: 'Stunting'})
+    return melted
+
+def create_bar_chart(df, x, y, color, title, height=400):
+    """Helper untuk membuat bar chart"""
+    fig = px.bar(
+        df,
+        x=x,
+        y=y,
+        color=color,
+        barmode='group',
+        color_discrete_map={'Tidak Stunting': COLORS['no_stunting'], 'Stunting': COLORS['stunting']},
+        labels={'x': x, 'y': y}
+    )
+    fig.update_layout(
+        title=title,
+        height=height,
+        showlegend=True
+    )
+    return fig
+
+def create_pie_chart(values, names, title, height=400):
+    """Helper untuk membuat pie chart"""
+    fig = px.pie(
+        values=values,
+        names=names,
+        color=names,
+        color_discrete_map={'Tidak Stunting': COLORS['no_stunting'], 'Stunting': COLORS['stunting']},
+        hole=0.4
+    )
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_layout(title=title, height=height, showlegend=True)
+    return fig
+
+def create_histogram(df, x, color_col, title, height=500):
+    """Helper untuk membuat histogram"""
+    fig = px.histogram(
+        df,
+        x=x,
+        color=color_col,
+        nbins=30,
+        barmode='overlay',
+        opacity=0.7,
+        color_discrete_map={0: COLORS['no_stunting'], 1: COLORS['stunting']}
+    )
+    fig.update_layout(title=title, height=height)
+    return fig
+
+def create_scatter(df, x, y, color_col, size_col, title, height=600):
+    """Helper untuk membuat scatter plot"""
+    fig = px.scatter(
+        df,
+        x=x,
+        y=y,
+        color=color_col,
+        size=size_col,
+        hover_data=['Sex', 'ASI_Eksklusif'] if 'Sex' in df.columns else [],
+        color_discrete_map={0: COLORS['no_stunting'], 1: COLORS['stunting']}
+    )
+    fig.update_layout(title=title, height=height)
+    return fig
+
+def create_box_plot(df, x, y, color_col, title, height=400):
+    """Helper untuk membuat box plot"""
+    fig = px.box(
+        df,
+        x=x,
+        y=y,
+        color=color_col,
+        color_discrete_map={0: COLORS['no_stunting'], 1: COLORS['stunting']}
+    )
+    fig.update_layout(title=title, height=height)
+    return fig
+
+@st.cache_resource
+def load_model(model_path):
+    """Load model H5"""
+    try:
+        if os.path.exists(model_path):
+            model = keras.models.load_model(model_path)
+            return model
+        return None
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        return None
+
+def preprocess_input(sex, age, birth_weight, birth_length, body_weight, body_length, asi):
+    """Preprocess input untuk prediksi model"""
+    # Normalisasi
+    age_max = 60.0
+    birth_weight_max = 4.5
+    birth_length_max = 55.0
+    body_weight_max = 20.0
+    body_length_max = 110.0
+    
+    age_norm = float(age) / age_max if age_max > 0 else 0.0
+    birth_weight_norm = float(birth_weight) / birth_weight_max if birth_weight_max > 0 else 0.0
+    birth_length_norm = float(birth_length) / birth_length_max if birth_length_max > 0 else 0.0
+    body_weight_norm = float(body_weight) / body_weight_max if body_weight_max > 0 else 0.0
+    body_length_norm = float(body_length) / body_length_max if body_length_max > 0 else 0.0
+    
+    # Feature engineering
+    age_years = float(age) / 12.0
+    bmi = float(body_weight) / ((float(body_length) / 100.0) ** 2) if body_length > 0 else 0.0
+    weight_growth = float(body_weight) - float(birth_weight)
+    length_growth = float(body_length) - float(birth_length)
+    weight_per_age = float(body_weight) / float(age) if age > 0 else 0.0
+    length_per_age = float(body_length) / float(age) if age > 0 else 0.0
+    
+    # Binary features
+    low_birth_weight = 1.0 if birth_weight < 2.5 else 0.0
+    short_birth_length = 1.0 if birth_length < 48.0 else 0.0
+    asi_numerical = 1.0 if asi == "Yes" else 0.0
+    asi_weight_growth = weight_growth if asi == "Yes" else 0.0
+    nutritional_stress = (1.0 - body_weight_norm) * (1.0 - body_length_norm)
+    log_body_weight = np.log(float(body_weight) + 1.0) if body_weight > 0 else 0.0
+    
+    features = [
+        age_norm, birth_weight_norm, birth_length_norm, body_weight_norm, body_length_norm,
+        age_years, bmi, weight_growth, length_growth, weight_per_age, length_per_age,
+        low_birth_weight, short_birth_length, asi_numerical, asi_weight_growth,
+        nutritional_stress, log_body_weight
+    ]
+    
+    return np.array([features], dtype=np.float32)
+
+def interpret_prediction(prediction):
+    """Interpretasi hasil prediksi model"""
+    if len(prediction[0]) == 1:
+        prob_stunting = max(0.0, min(1.0, float(prediction[0][0])))
+        prob_no_stunting = 1.0 - prob_stunting
+    else:
+        prob_no_stunting = float(prediction[0][0])
+        prob_stunting = float(prediction[0][1]) if len(prediction[0]) > 1 else 0.0
+        total = prob_no_stunting + prob_stunting
+        if total > 0:
+            prob_no_stunting /= total
+            prob_stunting /= total
+    
+    threshold = 0.5
+    result = "Stunting" if prob_stunting > threshold else "Tidak Stunting"
+    return prob_no_stunting, prob_stunting, result
+
+# ==================== SIDEBAR ====================
+
 st.sidebar.title("Navigasi Dashboard")
 st.sidebar.markdown("---")
+
+# Pilihan dataset
+selected_dataset = st.sidebar.selectbox(
+    "Pilih Dataset",
+    list(DATASETS.keys()),
+    help="Pilih dataset yang ingin dianalisis"
+)
+
+# Load data
+df = load_data(selected_dataset)
+df = normalize_column_names(df)
 
 # Menu navigasi
 page = st.sidebar.radio(
@@ -43,469 +242,336 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Filter Data")
 
 # Filter berdasarkan jenis kelamin
-sex_filter = st.sidebar.multiselect(
-    "Jenis Kelamin",
-    options=df['Sex'].unique(),
-    default=df['Sex'].unique()
-)
+if 'Sex' in df.columns:
+    sex_filter = st.sidebar.multiselect(
+        "Jenis Kelamin",
+        options=df['Sex'].unique(),
+        default=df['Sex'].unique()
+    )
+else:
+    sex_filter = []
 
 # Filter berdasarkan ASI Eksklusif
-asi_filter = st.sidebar.multiselect(
-    "ASI Eksklusif",
-    options=df['ASI_Eksklusif'].unique(),
-    default=df['ASI_Eksklusif'].unique()
-)
+if 'ASI_Eksklusif' in df.columns:
+    asi_filter = st.sidebar.multiselect(
+        "ASI Eksklusif",
+        options=df['ASI_Eksklusif'].unique(),
+        default=df['ASI_Eksklusif'].unique()
+    )
+else:
+    asi_filter = []
 
 # Filter berdasarkan Stunting
-stunting_filter = st.sidebar.multiselect(
-    "Status Stunting",
-    options=df['Stunting'].unique(),
-    default=df['Stunting'].unique()
-)
+if 'Stunting' in df.columns:
+    stunting_filter = st.sidebar.multiselect(
+        "Status Stunting",
+        options=df['Stunting'].unique(),
+        default=df['Stunting'].unique()
+    )
+else:
+    stunting_filter = []
 
 # Filter umur
-age_range = st.sidebar.slider(
-    "Rentang Umur (bulan)",
-    min_value=int(df['Age'].min()),
-    max_value=int(df['Age'].max()),
-    value=(int(df['Age'].min()), int(df['Age'].max()))
-)
+if 'Age' in df.columns:
+    age_range = st.sidebar.slider(
+        "Rentang Umur (bulan)",
+        min_value=int(df['Age'].min()),
+        max_value=int(df['Age'].max()),
+        value=(int(df['Age'].min()), int(df['Age'].max()))
+    )
+else:
+    age_range = (0, 100)
 
 # Terapkan filter
-filtered_df = df[
-    (df['Sex'].isin(sex_filter)) &
-    (df['ASI_Eksklusif'].isin(asi_filter)) &
-    (df['Stunting'].isin(stunting_filter)) &
-    (df['Age'] >= age_range[0]) &
-    (df['Age'] <= age_range[1])
-]
+filtered_df = df.copy()
+if 'Sex' in df.columns:
+    filtered_df = filtered_df[filtered_df['Sex'].isin(sex_filter)]
+if 'ASI_Eksklusif' in df.columns:
+    filtered_df = filtered_df[filtered_df['ASI_Eksklusif'].isin(asi_filter)]
+if 'Stunting' in df.columns:
+    filtered_df = filtered_df[filtered_df['Stunting'].isin(stunting_filter)]
+if 'Age' in df.columns:
+    filtered_df = filtered_df[(filtered_df['Age'] >= age_range[0]) & (filtered_df['Age'] <= age_range[1])]
 
 # Informasi di sidebar
 st.sidebar.markdown("---")
 st.sidebar.metric("Total Data", f"{len(filtered_df):,}")
-st.sidebar.metric("Data Stunting", f"{filtered_df['Stunting'].sum():,}")
-st.sidebar.metric("Persentase Stunting", f"{(filtered_df['Stunting'].sum()/len(filtered_df)*100):.2f}%")
+if 'Stunting' in filtered_df.columns:
+    st.sidebar.metric("Data Stunting", f"{filtered_df['Stunting'].sum():,}")
+    st.sidebar.metric("Persentase Stunting", f"{(filtered_df['Stunting'].sum()/len(filtered_df)*100):.2f}%")
 
-# Halaman Overview
+# ==================== HALAMAN OVERVIEW ====================
+
 if page == "Overview":
     st.title("Dashboard Overview - Analisis Stunting")
+    st.markdown(f"**Dataset:** {selected_dataset}")
     st.markdown("---")
     
     # Metrik utama
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
-            "Total Data",
-            f"{len(filtered_df):,}",
-            delta=f"{len(filtered_df) - len(df)}"
-        )
+        st.metric("Total Data", f"{len(filtered_df):,}")
     
     with col2:
-        stunting_count = filtered_df['Stunting'].sum()
-        st.metric(
-            "Kasus Stunting",
-            f"{stunting_count:,}",
-            delta=f"{(stunting_count/len(filtered_df)*100) - (df['Stunting'].sum()/len(df)*100):.2f}%"
-        )
+        if 'Stunting' in filtered_df.columns:
+            stunting_count = filtered_df['Stunting'].sum()
+            st.metric("Kasus Stunting", f"{stunting_count:,}")
+        else:
+            st.metric("Kasus Stunting", "N/A")
     
     with col3:
-        avg_age = filtered_df['Age'].mean()
-        st.metric(
-            "Rata-rata Umur",
-            f"{avg_age:.1f} bulan",
-            delta=f"{avg_age - df['Age'].mean():.1f}"
-        )
+        if 'Age' in filtered_df.columns:
+            avg_age = filtered_df['Age'].mean()
+            st.metric("Rata-rata Umur", f"{avg_age:.1f} bulan")
+        else:
+            st.metric("Rata-rata Umur", "N/A")
     
     with col4:
-        avg_weight = filtered_df['Body_Weight'].mean()
-        st.metric(
-            "Rata-rata Berat Badan",
-            f"{avg_weight:.2f} kg",
-            delta=f"{avg_weight - df['Body_Weight'].mean():.2f}"
-        )
+        if 'Body_Weight' in filtered_df.columns:
+            avg_weight = filtered_df['Body_Weight'].mean()
+            st.metric("Rata-rata Berat Badan", f"{avg_weight:.2f} kg")
+        else:
+            st.metric("Rata-rata Berat Badan", "N/A")
     
     st.markdown("---")
     
     # Grafik distribusi stunting
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Distribusi Status Stunting")
-        stunting_counts = filtered_df['Stunting'].value_counts()
-        fig_pie = px.pie(
-            values=stunting_counts.values,
-            names=['Tidak Stunting', 'Stunting'],
-            color=['Tidak Stunting', 'Stunting'],
-            color_discrete_map={'Tidak Stunting': '#2ecc71', 'Stunting': '#e74c3c'},
-            hole=0.4
-        )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        fig_pie.update_layout(showlegend=True, height=400)
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with col2:
-        st.subheader("Distribusi berdasarkan Jenis Kelamin")
-        sex_stunting = pd.crosstab(filtered_df['Sex'], filtered_df['Stunting'])
-        sex_stunting_reset = sex_stunting.reset_index()
-        sex_stunting_melted = pd.melt(
-            sex_stunting_reset,
-            id_vars=['Sex'],
-            value_vars=[0, 1],
-            var_name='Stunting',
-            value_name='Jumlah'
-        )
-        sex_stunting_melted['Stunting_Label'] = sex_stunting_melted['Stunting'].map({0: 'Tidak Stunting', 1: 'Stunting'})
-        fig_bar = px.bar(
-            sex_stunting_melted,
-            x='Sex',
-            y='Jumlah',
-            color='Stunting_Label',
-            barmode='group',
-            labels={'Sex': 'Jenis Kelamin', 'Jumlah': 'Jumlah'},
-            color_discrete_map={'Tidak Stunting': '#2ecc71', 'Stunting': '#e74c3c'}
-        )
-        fig_bar.update_layout(
-            xaxis_title="Jenis Kelamin",
-            yaxis_title="Jumlah",
-            legend_title="Status Stunting",
-            height=400
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    # Grafik ASI Eksklusif
-    st.subheader("Pengaruh ASI Eksklusif terhadap Stunting")
-    asi_stunting = pd.crosstab(filtered_df['ASI_Eksklusif'], filtered_df['Stunting'])
-    asi_stunting_reset = asi_stunting.reset_index()
-    asi_stunting_melted = pd.melt(
-        asi_stunting_reset,
-        id_vars=['ASI_Eksklusif'],
-        value_vars=[0, 1],
-        var_name='Stunting',
-        value_name='Jumlah'
-    )
-    asi_stunting_melted['Stunting_Label'] = asi_stunting_melted['Stunting'].map({0: 'Tidak Stunting', 1: 'Stunting'})
-    fig_asi = px.bar(
-        asi_stunting_melted,
-        x='ASI_Eksklusif',
-        y='Jumlah',
-        color='Stunting_Label',
-        barmode='group',
-        labels={'ASI_Eksklusif': 'ASI Eksklusif', 'Jumlah': 'Jumlah'},
-        color_discrete_map={'Tidak Stunting': '#2ecc71', 'Stunting': '#e74c3c'}
-    )
-    fig_asi.update_layout(
-        xaxis_title="ASI Eksklusif",
-        yaxis_title="Jumlah",
-        legend_title="Status Stunting",
-        height=400
-    )
-    st.plotly_chart(fig_asi, use_container_width=True)
+    if 'Stunting' in filtered_df.columns:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Distribusi Status Stunting")
+            stunting_counts = filtered_df['Stunting'].value_counts()
+            fig_pie = create_pie_chart(
+                stunting_counts.values,
+                ['Tidak Stunting', 'Stunting'],
+                "Distribusi Status Stunting"
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+        
+        with col2:
+            if 'Sex' in filtered_df.columns:
+                st.subheader("Distribusi berdasarkan Jenis Kelamin")
+                sex_melted = create_crosstab_melted(filtered_df, 'Sex')
+                fig_bar = create_bar_chart(
+                    sex_melted,
+                    'Sex',
+                    'Jumlah',
+                    'Stunting_Label',
+                    "Distribusi berdasarkan Jenis Kelamin"
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
+        
+        # Grafik ASI Eksklusif
+        if 'ASI_Eksklusif' in filtered_df.columns:
+            st.subheader("Pengaruh ASI Eksklusif terhadap Stunting")
+            asi_melted = create_crosstab_melted(filtered_df, 'ASI_Eksklusif')
+            fig_asi = create_bar_chart(
+                asi_melted,
+                'ASI_Eksklusif',
+                'Jumlah',
+                'Stunting_Label',
+                "Pengaruh ASI Eksklusif terhadap Stunting"
+            )
+            st.plotly_chart(fig_asi, use_container_width=True)
 
-# Halaman Analisis Visual
+# ==================== HALAMAN ANALISIS VISUAL ====================
+
 elif page == "Analisis Visual":
     st.title("Analisis Visual Data Stunting")
+    st.markdown(f"**Dataset:** {selected_dataset}")
     st.markdown("---")
     
-    # Pilihan visualisasi
-    viz_type = st.selectbox(
-        "Pilih Jenis Visualisasi",
-        [
-            "Distribusi Umur",
-            "Hubungan Berat & Panjang Badan",
-            "Hubungan Berat & Panjang Lahir",
-            "Distribusi Berat Badan",
-            "Distribusi Panjang Badan",
-            "Heatmap Korelasi"
-        ]
-    )
+    viz_options = []
+    if 'Age' in filtered_df.columns and 'Stunting' in filtered_df.columns:
+        viz_options.append("Distribusi Umur")
+    if 'Body_Weight' in filtered_df.columns and 'Body_Length' in filtered_df.columns:
+        viz_options.append("Hubungan Berat & Panjang Badan")
+    if 'Birth_Weight' in filtered_df.columns and 'Birth_Length' in filtered_df.columns:
+        viz_options.append("Hubungan Berat & Panjang Lahir")
+    if 'Body_Weight' in filtered_df.columns:
+        viz_options.append("Distribusi Berat Badan")
+    if 'Body_Length' in filtered_df.columns:
+        viz_options.append("Distribusi Panjang Badan")
+    if len([c for c in ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length', 'Stunting'] if c in filtered_df.columns]) >= 3:
+        viz_options.append("Heatmap Korelasi")
     
-    if viz_type == "Distribusi Umur":
-        st.subheader("Distribusi Umur berdasarkan Status Stunting")
-        fig = px.histogram(
-            filtered_df,
-            x='Age',
-            color='Stunting',
-            nbins=30,
-            barmode='overlay',
-            opacity=0.7,
-            labels={'Age': 'Umur (bulan)', 'count': 'Frekuensi'},
-            color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
-        )
-        fig.update_layout(height=500)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    elif viz_type == "Hubungan Berat & Panjang Badan":
-        st.subheader("Hubungan Berat Badan vs Panjang Badan")
-        fig = px.scatter(
-            filtered_df,
-            x='Body_Length',
-            y='Body_Weight',
-            color='Stunting',
-            size='Age',
-            hover_data=['Sex', 'ASI_Eksklusif'],
-            labels={
-                'Body_Length': 'Panjang Badan (cm)',
-                'Body_Weight': 'Berat Badan (kg)',
-                'Stunting': 'Status Stunting'
-            },
-            color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
-        )
-        fig.update_layout(height=600)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    elif viz_type == "Hubungan Berat & Panjang Lahir":
-        st.subheader("Hubungan Berat Lahir vs Panjang Lahir")
-        fig = px.scatter(
-            filtered_df,
-            x='Birth_Length',
-            y='Birth_Weight',
-            color='Stunting',
-            size='Age',
-            hover_data=['Sex', 'ASI_Eksklusif'],
-            labels={
-                'Birth_Length': 'Panjang Lahir (cm)',
-                'Birth_Weight': 'Berat Lahir (kg)',
-                'Stunting': 'Status Stunting'
-            },
-            color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
-        )
-        fig.update_layout(height=600)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    elif viz_type == "Distribusi Berat Badan":
-        st.subheader("Distribusi Berat Badan")
-        col1, col2 = st.columns(2)
+    if not viz_options:
+        st.warning("Dataset yang dipilih tidak memiliki kolom yang cukup untuk visualisasi.")
+    else:
+        viz_type = st.selectbox("Pilih Jenis Visualisasi", viz_options)
         
-        with col1:
-            fig1 = px.box(
-                filtered_df,
-                x='Stunting',
-                y='Body_Weight',
-                color='Stunting',
-                labels={'Body_Weight': 'Berat Badan (kg)', 'Stunting': 'Status Stunting'},
-                color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
-            )
-            fig1.update_layout(height=400)
-            st.plotly_chart(fig1, use_container_width=True)
+        if viz_type == "Distribusi Umur":
+            st.subheader("Distribusi Umur berdasarkan Status Stunting")
+            fig = create_histogram(filtered_df, 'Age', 'Stunting', "Distribusi Umur")
+            st.plotly_chart(fig, use_container_width=True)
         
-        with col2:
-            fig2 = px.histogram(
+        elif viz_type == "Hubungan Berat & Panjang Badan":
+            st.subheader("Hubungan Berat Badan vs Panjang Badan")
+            fig = create_scatter(
                 filtered_df,
-                x='Body_Weight',
-                color='Stunting',
-                nbins=30,
-                barmode='overlay',
-                opacity=0.7,
-                labels={'Body_Weight': 'Berat Badan (kg)', 'count': 'Frekuensi'},
-                color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
+                'Body_Length',
+                'Body_Weight',
+                'Stunting',
+                'Age' if 'Age' in filtered_df.columns else None,
+                "Hubungan Berat Badan vs Panjang Badan"
             )
-            fig2.update_layout(height=400)
-            st.plotly_chart(fig2, use_container_width=True)
-    
-    elif viz_type == "Distribusi Panjang Badan":
-        st.subheader("Distribusi Panjang Badan")
-        col1, col2 = st.columns(2)
+            st.plotly_chart(fig, use_container_width=True)
         
-        with col1:
-            fig1 = px.box(
+        elif viz_type == "Hubungan Berat & Panjang Lahir":
+            st.subheader("Hubungan Berat Lahir vs Panjang Lahir")
+            fig = create_scatter(
                 filtered_df,
-                x='Stunting',
-                y='Body_Length',
-                color='Stunting',
-                labels={'Body_Length': 'Panjang Badan (cm)', 'Stunting': 'Status Stunting'},
-                color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
+                'Birth_Length',
+                'Birth_Weight',
+                'Stunting',
+                'Age' if 'Age' in filtered_df.columns else None,
+                "Hubungan Berat Lahir vs Panjang Lahir"
             )
-            fig1.update_layout(height=400)
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
         
-        with col2:
-            fig2 = px.histogram(
-                filtered_df,
-                x='Body_Length',
-                color='Stunting',
-                nbins=30,
-                barmode='overlay',
-                opacity=0.7,
-                labels={'Body_Length': 'Panjang Badan (cm)', 'count': 'Frekuensi'},
-                color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
-            )
-            fig2.update_layout(height=400)
-            st.plotly_chart(fig2, use_container_width=True)
-    
-    elif viz_type == "Heatmap Korelasi":
-        st.subheader("Heatmap Korelasi Variabel Numerik")
-        numeric_cols = ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length', 'Stunting']
-        corr_matrix = filtered_df[numeric_cols].corr()
-        fig = px.imshow(
-            corr_matrix,
-            text_auto=True,
-            aspect="auto",
-            color_continuous_scale='RdBu',
-            labels=dict(x="Variabel", y="Variabel", color="Korelasi")
-        )
-        fig.update_layout(height=600)
-        st.plotly_chart(fig, use_container_width=True)
+        elif viz_type == "Distribusi Berat Badan":
+            st.subheader("Distribusi Berat Badan")
+            col1, col2 = st.columns(2)
+            with col1:
+                fig1 = create_box_plot(filtered_df, 'Stunting', 'Body_Weight', 'Stunting', "Box Plot Berat Badan")
+                st.plotly_chart(fig1, use_container_width=True)
+            with col2:
+                fig2 = create_histogram(filtered_df, 'Body_Weight', 'Stunting', "Histogram Berat Badan")
+                st.plotly_chart(fig2, use_container_width=True)
+        
+        elif viz_type == "Distribusi Panjang Badan":
+            st.subheader("Distribusi Panjang Badan")
+            col1, col2 = st.columns(2)
+            with col1:
+                fig1 = create_box_plot(filtered_df, 'Stunting', 'Body_Length', 'Stunting', "Box Plot Panjang Badan")
+                st.plotly_chart(fig1, use_container_width=True)
+            with col2:
+                fig2 = create_histogram(filtered_df, 'Body_Length', 'Stunting', "Histogram Panjang Badan")
+                st.plotly_chart(fig2, use_container_width=True)
+        
+        elif viz_type == "Heatmap Korelasi":
+            st.subheader("Heatmap Korelasi Variabel Numerik")
+            numeric_cols = [c for c in ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length', 'Stunting'] if c in filtered_df.columns]
+            if len(numeric_cols) >= 2:
+                corr_matrix = filtered_df[numeric_cols].corr()
+                fig = px.imshow(
+                    corr_matrix,
+                    text_auto=True,
+                    aspect="auto",
+                    color_continuous_scale='RdBu',
+                    labels=dict(x="Variabel", y="Variabel", color="Korelasi")
+                )
+                fig.update_layout(height=600)
+                st.plotly_chart(fig, use_container_width=True)
 
-# Halaman Analisis Detail
+# ==================== HALAMAN ANALISIS DETAIL ====================
+
 elif page == "Analisis Detail":
     st.title("Analisis Detail Data Stunting")
+    st.markdown(f"**Dataset:** {selected_dataset}")
     st.markdown("---")
     
-    # Analisis berdasarkan kategori
-    analysis_type = st.selectbox(
-        "Pilih Analisis",
-        [
-            "Analisis berdasarkan Jenis Kelamin",
-            "Analisis berdasarkan ASI Eksklusif",
-            "Analisis berdasarkan Umur",
-            "Statistik Deskriptif"
-        ]
-    )
+    analysis_options = []
+    if 'Sex' in filtered_df.columns and 'Stunting' in filtered_df.columns:
+        analysis_options.append("Analisis berdasarkan Jenis Kelamin")
+    if 'ASI_Eksklusif' in filtered_df.columns and 'Stunting' in filtered_df.columns:
+        analysis_options.append("Analisis berdasarkan ASI Eksklusif")
+    if 'Age' in filtered_df.columns:
+        analysis_options.append("Analisis berdasarkan Umur")
+    analysis_options.append("Statistik Deskriptif")
     
-    if analysis_type == "Analisis berdasarkan Jenis Kelamin":
-        st.subheader("Analisis berdasarkan Jenis Kelamin")
+    if not analysis_options:
+        st.warning("Dataset yang dipilih tidak memiliki kolom yang cukup untuk analisis detail.")
+    else:
+        analysis_type = st.selectbox("Pilih Analisis", analysis_options)
         
-        sex_analysis = filtered_df.groupby(['Sex', 'Stunting']).agg({
-            'Age': 'mean',
-            'Body_Weight': 'mean',
-            'Body_Length': 'mean',
-            'Birth_Weight': 'mean',
-            'Birth_Length': 'mean'
-        }).round(2)
+        if analysis_type == "Analisis berdasarkan Jenis Kelamin":
+            st.subheader("Analisis berdasarkan Jenis Kelamin")
+            numeric_cols = [c for c in ['Age', 'Body_Weight', 'Body_Length', 'Birth_Weight', 'Birth_Length'] if c in filtered_df.columns]
+            if numeric_cols:
+                sex_analysis = filtered_df.groupby(['Sex', 'Stunting'])[numeric_cols].agg('mean').round(2)
+                st.dataframe(sex_analysis, use_container_width=True)
         
-        st.dataframe(sex_analysis, use_container_width=True)
-        
-        # Visualisasi
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Rata-rata Berat Badan', 'Rata-rata Panjang Badan', 
-                          'Rata-rata Berat Lahir', 'Rata-rata Panjang Lahir'),
-            specs=[[{"type": "bar"}, {"type": "bar"}],
-                   [{"type": "bar"}, {"type": "bar"}]]
-        )
-        
-        for i, (stunt_val, label) in enumerate([(0, 'Tidak Stunting'), (1, 'Stunting')]):
-            temp_df = filtered_df[filtered_df['Stunting'] == stunt_val]
-            sex_means = temp_df.groupby('Sex').agg({
-                'Body_Weight': 'mean',
-                'Body_Length': 'mean',
-                'Birth_Weight': 'mean',
-                'Birth_Length': 'mean'
-            })
+        elif analysis_type == "Analisis berdasarkan ASI Eksklusif":
+            st.subheader("Analisis berdasarkan ASI Eksklusif")
+            numeric_cols = [c for c in ['Age', 'Body_Weight', 'Body_Length', 'Birth_Weight', 'Birth_Length'] if c in filtered_df.columns]
+            if numeric_cols:
+                asi_analysis = filtered_df.groupby(['ASI_Eksklusif', 'Stunting'])[numeric_cols].agg('mean').round(2)
+                st.dataframe(asi_analysis, use_container_width=True)
             
-            fig.add_trace(
-                go.Bar(x=sex_means.index, y=sex_means['Body_Weight'], name=f'Berat Badan - {label}'),
-                row=1, col=1
-            )
-            fig.add_trace(
-                go.Bar(x=sex_means.index, y=sex_means['Body_Length'], name=f'Panjang Badan - {label}'),
-                row=1, col=2
-            )
-            fig.add_trace(
-                go.Bar(x=sex_means.index, y=sex_means['Birth_Weight'], name=f'Berat Lahir - {label}'),
-                row=2, col=1
-            )
-            fig.add_trace(
-                go.Bar(x=sex_means.index, y=sex_means['Birth_Length'], name=f'Panjang Lahir - {label}'),
-                row=2, col=2
-            )
+            if 'Stunting' in filtered_df.columns:
+                asi_stunt_pct = filtered_df.groupby('ASI_Eksklusif')['Stunting'].agg(['sum', 'count'])
+                asi_stunt_pct['Persentase'] = (asi_stunt_pct['sum'] / asi_stunt_pct['count'] * 100).round(2)
+                st.subheader("Persentase Stunting berdasarkan ASI Eksklusif")
+                st.dataframe(asi_stunt_pct, use_container_width=True)
+                
+                fig = px.bar(
+                    asi_stunt_pct.reset_index(),
+                    x='ASI_Eksklusif',
+                    y='Persentase',
+                    color='ASI_Eksklusif',
+                    color_discrete_sequence=[COLORS['asi_yes'], COLORS['asi_no']]
+                )
+                fig.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
         
-        fig.update_layout(height=700, showlegend=True)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    elif analysis_type == "Analisis berdasarkan ASI Eksklusif":
-        st.subheader("Analisis berdasarkan ASI Eksklusif")
+        elif analysis_type == "Analisis berdasarkan Umur":
+            st.subheader("Analisis berdasarkan Kelompok Umur")
+            if 'Age' in filtered_df.columns:
+                filtered_df['Kelompok_Umur'] = pd.cut(
+                    filtered_df['Age'],
+                    bins=[0, 12, 24, 36, 48, 60, 100],
+                    labels=['0-12 bulan', '13-24 bulan', '25-36 bulan', '37-48 bulan', '49-60 bulan', '>60 bulan']
+                )
+                
+                numeric_cols = [c for c in ['Body_Weight', 'Body_Length'] if c in filtered_df.columns]
+                if numeric_cols:
+                    age_analysis = filtered_df.groupby(['Kelompok_Umur', 'Stunting'])[numeric_cols].agg('mean').round(2)
+                    st.dataframe(age_analysis, use_container_width=True)
+                
+                if 'Stunting' in filtered_df.columns:
+                    age_grouped = filtered_df.groupby(['Kelompok_Umur', 'Stunting']).size().reset_index(name='Jumlah')
+                    fig = create_bar_chart(
+                        age_grouped,
+                        'Kelompok_Umur',
+                        'Jumlah',
+                        'Stunting',
+                        "Distribusi berdasarkan Kelompok Umur"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
         
-        asi_analysis = filtered_df.groupby(['ASI_Eksklusif', 'Stunting']).agg({
-            'Age': 'mean',
-            'Body_Weight': 'mean',
-            'Body_Length': 'mean',
-            'Birth_Weight': 'mean',
-            'Birth_Length': 'mean'
-        }).round(2)
-        
-        st.dataframe(asi_analysis, use_container_width=True)
-        
-        # Persentase stunting berdasarkan ASI
-        asi_stunt_pct = filtered_df.groupby('ASI_Eksklusif')['Stunting'].agg(['sum', 'count'])
-        asi_stunt_pct['Persentase'] = (asi_stunt_pct['sum'] / asi_stunt_pct['count'] * 100).round(2)
-        st.subheader("Persentase Stunting berdasarkan ASI Eksklusif")
-        st.dataframe(asi_stunt_pct, use_container_width=True)
-        
-        # Visualisasi
-        fig = px.bar(
-            asi_stunt_pct.reset_index(),
-            x='ASI_Eksklusif',
-            y='Persentase',
-            color='ASI_Eksklusif',
-            labels={'Persentase': 'Persentase Stunting (%)'},
-            color_discrete_sequence=['#3498db', '#e74c3c']
-        )
-        fig.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    elif analysis_type == "Analisis berdasarkan Umur":
-        st.subheader("Analisis berdasarkan Kelompok Umur")
-        
-        # Buat kelompok umur
-        filtered_df['Kelompok_Umur'] = pd.cut(
-            filtered_df['Age'],
-            bins=[0, 12, 24, 36, 48, 60, 100],
-            labels=['0-12 bulan', '13-24 bulan', '25-36 bulan', '37-48 bulan', '49-60 bulan', '>60 bulan']
-        )
-        
-        age_analysis = filtered_df.groupby(['Kelompok_Umur', 'Stunting']).agg({
-            'Body_Weight': 'mean',
-            'Body_Length': 'mean'
-        }).round(2)
-        
-        st.dataframe(age_analysis, use_container_width=True)
-        
-        # Visualisasi
-        fig = px.bar(
-            filtered_df.groupby(['Kelompok_Umur', 'Stunting']).size().reset_index(name='Jumlah'),
-            x='Kelompok_Umur',
-            y='Jumlah',
-            color='Stunting',
-            barmode='group',
-            labels={'Jumlah': 'Jumlah Kasus'},
-            color_discrete_map={0: '#2ecc71', 1: '#e74c3c'}
-        )
-        fig.update_layout(height=500, xaxis_title="Kelompok Umur", yaxis_title="Jumlah Kasus")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    elif analysis_type == "Statistik Deskriptif":
-        st.subheader("Statistik Deskriptif")
-        
-        numeric_cols = ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length']
-        desc_stats = filtered_df[numeric_cols].describe()
-        st.dataframe(desc_stats, use_container_width=True)
-        
-        # Perbandingan stunting vs tidak stunting
-        st.subheader("Perbandingan Statistik: Stunting vs Tidak Stunting")
-        comparison = filtered_df.groupby('Stunting')[numeric_cols].agg(['mean', 'std', 'min', 'max']).round(2)
-        st.dataframe(comparison, use_container_width=True)
+        elif analysis_type == "Statistik Deskriptif":
+            st.subheader("Statistik Deskriptif")
+            numeric_cols = [c for c in ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length'] if c in filtered_df.columns]
+            if numeric_cols:
+                desc_stats = filtered_df[numeric_cols].describe()
+                st.dataframe(desc_stats, use_container_width=True)
+                
+                if 'Stunting' in filtered_df.columns:
+                    st.subheader("Perbandingan Statistik: Stunting vs Tidak Stunting")
+                    comparison = filtered_df.groupby('Stunting')[numeric_cols].agg(['mean', 'std', 'min', 'max']).round(2)
+                    st.dataframe(comparison, use_container_width=True)
 
-# Halaman Data Explorer
+# ==================== HALAMAN DATA EXPLORER ====================
+
 elif page == "Data Explorer":
     st.title("Data Explorer")
+    st.markdown(f"**Dataset:** {selected_dataset}")
     st.markdown("---")
     
-    # Tampilkan data
     st.subheader("Tabel Data")
     st.dataframe(filtered_df, use_container_width=True, height=400)
     
-    # Download data
     csv = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="Download Data sebagai CSV",
         data=csv,
-        file_name='filtered_stunting_data.csv',
+        file_name=f'filtered_{selected_dataset.lower().replace(" ", "_")}.csv',
         mime='text/csv'
     )
     
-    # Informasi dataset
     st.markdown("---")
     st.subheader("Informasi Dataset")
     col1, col2 = st.columns(2)
@@ -522,342 +588,132 @@ elif page == "Data Explorer":
     st.write("**Missing Values:**")
     st.write(filtered_df.isnull().sum())
 
-# Halaman Prediksi
+# ==================== HALAMAN PREDIKSI ====================
+
 elif page == "Prediksi":
     st.title("Prediksi Stunting")
     st.markdown("---")
     
     if not MODEL_AVAILABLE:
         st.warning("⚠️ TensorFlow/Keras tidak terinstall. Install dengan: pip install tensorflow")
-        st.info("Untuk menggunakan fitur prediksi, pastikan file model H5 tersedia dan TensorFlow sudah terinstall.")
     else:
-        # Cek apakah file model ada
-        model_files = [f for f in os.listdir('.') if f.endswith('.h5') or f.endswith('.hdf5')]
+        model = load_model(MODEL_PATH)
         
-        if not model_files:
-            st.warning("⚠️ File model H5 tidak ditemukan di direktori saat ini.")
-            st.info("""
-            **Cara menggunakan fitur prediksi:**
-            1. Pastikan file model H5 (misalnya: `model_terbaik.h5`) ada di folder yang sama dengan dashboard.py
-            2. Model akan otomatis terdeteksi dan digunakan untuk prediksi
-            """)
+        if model is None:
+            st.warning(f"⚠️ File model {MODEL_PATH} tidak ditemukan.")
         else:
-            # Load model
-            @st.cache_resource
-            def load_model(model_path):
+            st.success(f"Model berhasil dimuat: {MODEL_PATH}")
+            
+            with st.expander("Informasi Model"):
                 try:
-                    model = keras.models.load_model(model_path)
-                    return model
-                except Exception as e:
-                    st.error(f"Error loading model: {str(e)}")
-                    return None
+                    st.write(f"**Nama Model:** {MODEL_PATH}")
+                    st.write(f"**Jumlah Layer:** {len(model.layers)}")
+                    st.write(f"**Input Shape:** {model.input_shape}")
+                    st.write(f"**Output Shape:** {model.output_shape}")
+                    st.write(f"**Jumlah Parameter:** {model.count_params():,}")
+                except:
+                    pass
             
-            # Pilih model jika ada lebih dari satu
-            if len(model_files) > 1:
-                selected_model = st.selectbox("Pilih Model", model_files)
-            else:
-                selected_model = model_files[0]
+            st.markdown("### Input Data untuk Prediksi")
+            st.markdown("---")
             
-            model = load_model(selected_model)
+            col1, col2 = st.columns(2)
             
-            if model is not None:
-                st.success(f"Model berhasil dimuat: {selected_model}")
+            st.info("💡 **Tips:** Isi data dengan benar untuk mendapatkan prediksi yang akurat.")
+            
+            # Contoh data
+            example_col1, example_col2, example_col3 = st.columns(3)
+            with example_col1:
+                if st.button("Contoh: Anak Normal", use_container_width=True):
+                    st.session_state.test_age = 24
+                    st.session_state.test_birth_weight = 3.2
+                    st.session_state.test_birth_length = 48.5
+                    st.session_state.test_body_weight = 12.5
+                    st.session_state.test_body_length = 85.0
+                    st.rerun()
+            with example_col2:
+                if st.button("Contoh: Berisiko Stunting", use_container_width=True):
+                    st.session_state.test_age = 30
+                    st.session_state.test_birth_weight = 2.5
+                    st.session_state.test_birth_length = 47.0
+                    st.session_state.test_body_weight = 9.0
+                    st.session_state.test_body_length = 75.0
+                    st.rerun()
+            with example_col3:
+                if st.button("Reset", use_container_width=True):
+                    if 'test_age' in st.session_state:
+                        del st.session_state.test_age
+                    st.rerun()
+            
+            with col1:
+                sex_input = st.selectbox("Jenis Kelamin", ["Male", "Female"])
+                age_input = st.number_input("Umur (bulan)", min_value=0, max_value=120, 
+                                            value=st.session_state.get('test_age', 24))
+                birth_weight = st.number_input("Berat Lahir (kg)", min_value=0.0, max_value=10.0, 
+                                              value=st.session_state.get('test_birth_weight', 3.2), step=0.1)
+                birth_length = st.number_input("Panjang Lahir (cm)", min_value=0.0, max_value=100.0, 
+                                              value=st.session_state.get('test_birth_length', 48.5), step=0.1)
+            
+            with col2:
+                body_weight = st.number_input("Berat Badan Saat Ini (kg)", min_value=0.0, max_value=50.0, 
+                                              value=st.session_state.get('test_body_weight', 12.5), step=0.1)
+                body_length = st.number_input("Panjang Badan Saat Ini (cm)", min_value=0.0, max_value=150.0, 
+                                              value=st.session_state.get('test_body_length', 85.0), step=0.1)
+                asi_input = st.selectbox("ASI Eksklusif", ["Yes", "No"])
+            
+            st.markdown("---")
+            
+            if st.button("Prediksi Stunting", type="primary", use_container_width=True):
+                input_data = preprocess_input(
+                    sex_input, age_input, birth_weight, birth_length,
+                    body_weight, body_length, asi_input
+                )
                 
-                # Tampilkan informasi model
-                with st.expander("Informasi Model"):
-                    try:
-                        st.write(f"**Nama Model:** {selected_model}")
-                        st.write(f"**Jumlah Layer:** {len(model.layers)}")
-                        st.write(f"**Input Shape:** {model.input_shape}")
-                        st.write(f"**Output Shape:** {model.output_shape}")
-                        st.write(f"**Jumlah Parameter:** {model.count_params():,}")
-                    except:
-                        pass
-                
-                st.markdown("### Input Data untuk Prediksi")
-                st.markdown("---")
-                
-                # Form input
-                col1, col2 = st.columns(2)
-                
-                st.info("💡 **Tips:** Isi data dengan benar untuk mendapatkan prediksi yang akurat. Gunakan data aktual anak untuk hasil terbaik.")
-                
-                # Contoh nilai untuk testing - bisa diubah sesuai kebutuhan
-                st.markdown("**Contoh Data untuk Testing:**")
-                example_col1, example_col2, example_col3 = st.columns(3)
-                with example_col1:
-                    if st.button("Contoh: Anak Normal (24 bulan)", use_container_width=True):
-                        st.session_state.test_age = 24
-                        st.session_state.test_birth_weight = 3.2
-                        st.session_state.test_birth_length = 48.5
-                        st.session_state.test_body_weight = 12.5
-                        st.session_state.test_body_length = 85.0
-                        st.rerun()
-                with example_col2:
-                    if st.button("Contoh: Berisiko Stunting", use_container_width=True):
-                        st.session_state.test_age = 30
-                        st.session_state.test_birth_weight = 2.5
-                        st.session_state.test_birth_length = 47.0
-                        st.session_state.test_body_weight = 9.0
-                        st.session_state.test_body_length = 75.0
-                        st.rerun()
-                with example_col3:
-                    if st.button("Reset ke Default", use_container_width=True):
-                        if 'test_age' in st.session_state:
-                            del st.session_state.test_age
-                        st.rerun()
-                
-                with col1:
-                    sex_input = st.selectbox("Jenis Kelamin", ["Male", "Female"], help="Pilih jenis kelamin anak")
-                    age_input = st.number_input("Umur (bulan)", min_value=0, max_value=120, 
-                                                value=st.session_state.get('test_age', 24), 
-                                                help="Umur anak dalam bulan (0-120 bulan)")
-                    birth_weight = st.number_input("Berat Lahir (kg)", min_value=0.0, max_value=10.0, 
-                                                  value=st.session_state.get('test_birth_weight', 3.2), step=0.1,
-                                                  help="Berat badan saat lahir dalam kilogram")
-                    birth_length = st.number_input("Panjang Lahir (cm)", min_value=0.0, max_value=100.0, 
-                                                  value=st.session_state.get('test_birth_length', 48.5), step=0.1,
-                                                  help="Panjang badan saat lahir dalam centimeter")
-                
-                with col2:
-                    body_weight = st.number_input("Berat Badan Saat Ini (kg)", min_value=0.0, max_value=50.0, 
-                                                  value=st.session_state.get('test_body_weight', 12.5), step=0.1,
-                                                  help="Berat badan anak saat ini dalam kilogram")
-                    body_length = st.number_input("Panjang Badan Saat Ini (cm)", min_value=0.0, max_value=150.0, 
-                                                  value=st.session_state.get('test_body_length', 85.0), step=0.1,
-                                                  help="Panjang badan anak saat ini dalam centimeter")
-                    asi_input = st.selectbox("ASI Eksklusif", ["Yes", "No"], 
-                                            help="Apakah anak mendapat ASI eksklusif?")
-                
-                st.markdown("---")
-                
-                # Fungsi preprocessing untuk mengubah input menjadi format yang diharapkan model
-                def preprocess_input(sex, age, birth_weight, birth_length, body_weight, body_length, asi):
-                    # Normalisasi berdasarkan range dari dataset (dari stunting_all_dl.csv)
-                    # Range maksimum untuk normalisasi - disesuaikan dengan data training
-                    # Dari analisis data: Age max ~60, tapi normalisasi menggunakan range yang lebih besar
-                    age_max = 60.0  # Maksimum umur dalam bulan
-                    birth_weight_max = 4.5  # Maksimum berat lahir (kg)
-                    birth_length_max = 55.0  # Maksimum panjang lahir (cm)
-                    body_weight_max = 20.0  # Maksimum berat badan (kg)
-                    body_length_max = 110.0  # Maksimum panjang badan (cm)
+                try:
+                    prediction = model.predict(input_data, verbose=0)
+                    prob_no_stunting, prob_stunting, result = interpret_prediction(prediction)
                     
-                    # Normalisasi fitur numerik (0-1 scaling) - sesuai dengan data training
-                    age_norm = float(age) / age_max if age_max > 0 else 0.0
-                    birth_weight_norm = float(birth_weight) / birth_weight_max if birth_weight_max > 0 else 0.0
-                    birth_length_norm = float(birth_length) / birth_length_max if birth_length_max > 0 else 0.0
-                    body_weight_norm = float(body_weight) / body_weight_max if body_weight_max > 0 else 0.0
-                    body_length_norm = float(body_length) / body_length_max if body_length_max > 0 else 0.0
+                    st.markdown("### Hasil Prediksi")
+                    st.markdown("---")
                     
-                    # Age in years
-                    age_years = float(age) / 12.0
+                    col1, col2 = st.columns(2)
                     
-                    # BMI calculation
-                    bmi = float(body_weight) / ((float(body_length) / 100.0) ** 2) if body_length > 0 else 0.0
+                    with col1:
+                        st.metric("Prediksi", result)
+                        fig = px.bar(
+                            x=['Tidak Stunting', 'Stunting'],
+                            y=[prob_no_stunting, prob_stunting],
+                            color=['Tidak Stunting', 'Stunting'],
+                            color_discrete_map={'Tidak Stunting': COLORS['no_stunting'], 'Stunting': COLORS['stunting']},
+                            labels={'x': 'Status', 'y': 'Probabilitas'},
+                            title='Probabilitas Prediksi'
+                        )
+                        fig.update_layout(height=400, showlegend=False)
+                        st.plotly_chart(fig, use_container_width=True)
                     
-                    # Growth calculations
-                    weight_growth = float(body_weight) - float(birth_weight)
-                    length_growth = float(body_length) - float(birth_length)
-                    
-                    # Weight and Length per Age (tidak dinormalisasi - langsung dari perhitungan)
-                    # Dari analisis data training: 
-                    # Weight_per_Age range: 0.09 - 1.85 (nilai aktual body_weight/age)
-                    # Length_per_Age range: 1.16 - 12.61 (nilai aktual body_length/age)
-                    # Jadi tidak perlu normalisasi tambahan, langsung hitung
-                    weight_per_age = float(body_weight) / float(age) if age > 0 else 0.0
-                    length_per_age = float(body_length) / float(age) if age > 0 else 0.0
-                    
-                    # Binary features
-                    low_birth_weight = 1.0 if birth_weight < 2.5 else 0.0
-                    short_birth_length = 1.0 if birth_length < 48.0 else 0.0
-                    
-                    # ASI features
-                    asi_numerical = 1.0 if asi == "Yes" else 0.0
-                    asi_weight_growth = weight_growth if asi == "Yes" else 0.0
-                    
-                    # Nutritional stress (simplified calculation)
-                    nutritional_stress = (1.0 - body_weight_norm) * (1.0 - body_length_norm)
-                    
-                    # Log transformations
-                    log_body_weight = np.log(float(body_weight) + 1.0) if body_weight > 0 else 0.0
-                    log_body_length = np.log(float(body_length) + 1.0) if body_length > 0 else 0.0
-                    
-                    # One-hot encoding for Sex
-                    sex_female = 1.0 if sex == "Female" else 0.0
-                    sex_male = 1.0 if sex == "Male" else 0.0
-                    
-                    # One-hot encoding for ASI
-                    asi_no = 1.0 if asi == "No" else 0.0
-                    asi_yes = 1.0 if asi == "Yes" else 0.0
-                    
-                    # Urutan fitur sesuai dengan model - 17 fitur pertama dari stunting_all_dl.csv
-                    # Berdasarkan kolom: Age, Birth_Weight, Birth_Length, Body_Weight, Body_Length, 
-                    # Age_Years, BMI, Weight_Growth, Length_Growth, Weight_per_Age, Length_per_Age,
-                    # Low_Birth_Weight, Short_Birth_Length, ASI_Eksklusif_Numerical, ASI_Weight_Growth,
-                    # Nutritional_Stress, Log_Body_Weight
-                    features = [
-                        age_norm,                    # 0: Age (normalized)
-                        birth_weight_norm,           # 1: Birth_Weight (normalized)
-                        birth_length_norm,           # 2: Birth_Length (normalized)
-                        body_weight_norm,            # 3: Body_Weight (normalized)
-                        body_length_norm,            # 4: Body_Length (normalized)
-                        age_years,                   # 5: Age_Years
-                        bmi,                         # 6: BMI
-                        weight_growth,               # 7: Weight_Growth
-                        length_growth,               # 8: Length_Growth
-                        weight_per_age,              # 9: Weight_per_Age
-                        length_per_age,              # 10: Length_per_Age
-                        low_birth_weight,            # 11: Low_Birth_Weight
-                        short_birth_length,          # 12: Short_Birth_Length
-                        asi_numerical,               # 13: ASI_Eksklusif_Numerical
-                        asi_weight_growth,           # 14: ASI_Weight_Growth
-                        nutritional_stress,          # 15: Nutritional_Stress
-                        log_body_weight              # 16: Log_Body_Weight (fitur ke-17)
-                    ]
-                    
-                    # Pastikan ada 17 fitur
-                    assert len(features) == 17, f"Expected 17 features, got {len(features)}"
-                    
-                    return np.array([features], dtype=np.float32)
-                
-                # Tombol prediksi
-                if st.button("Prediksi Stunting", type="primary", use_container_width=True):
-                    # Preprocess input data
-                    input_data = preprocess_input(
-                        sex_input,
-                        age_input,
-                        birth_weight,
-                        birth_length,
-                        body_weight,
-                        body_length,
-                        asi_input
-                    )
-                    
-                    try:
-                        # Debug: Tampilkan input data yang sudah di-preprocess
-                        with st.expander("Debug: Input Data (17 fitur)", expanded=False):
-                            feature_names = [
-                                "Age (norm)", "Birth_Weight (norm)", "Birth_Length (norm)",
-                                "Body_Weight (norm)", "Body_Length (norm)", "Age_Years",
-                                "BMI", "Weight_Growth", "Length_Growth", "Weight_per_Age (norm)",
-                                "Length_per_Age (norm)", "Low_Birth_Weight", "Short_Birth_Length",
-                                "ASI_Eksklusif_Numerical", "ASI_Weight_Growth", "Nutritional_Stress",
-                                "Log_Body_Weight"
-                            ]
-                            debug_df = pd.DataFrame({
-                                'Feature': feature_names,
-                                'Value': input_data[0]
-                            })
-                            st.dataframe(debug_df, use_container_width=True)
+                    with col2:
+                        st.subheader("Detail Probabilitas")
+                        st.metric("Tidak Stunting", f"{prob_no_stunting*100:.2f}%")
+                        st.metric("Stunting", f"{prob_stunting*100:.2f}%")
+                        st.progress(float(prob_stunting), text=f"Risiko Stunting: {prob_stunting*100:.1f}%")
                         
-                        # Prediksi
-                        prediction = model.predict(input_data, verbose=0)
-                        
-                        # Debug: Tampilkan raw prediction
-                        with st.expander("Debug: Raw Prediction", expanded=False):
-                            st.write(f"Prediction shape: {prediction.shape}")
-                            st.write(f"Prediction values: {prediction}")
-                            st.write(f"Prediction type: {type(prediction[0][0])}")
-                        
-                        # Tampilkan hasil
-                        st.markdown("### Hasil Prediksi")
                         st.markdown("---")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Interpretasi output model
-                            # Jika output binary (sigmoid - 1 nilai: probabilitas stunting)
-                            if len(prediction[0]) == 1:
-                                prob_stunting = float(prediction[0][0])
-                                # Pastikan probabilitas dalam range 0-1
-                                prob_stunting = max(0.0, min(1.0, prob_stunting))
-                                prob_no_stunting = 1.0 - prob_stunting
-                                
-                                # Threshold untuk klasifikasi
-                                threshold = 0.5
-                                if prob_stunting > threshold:
-                                    result = "Stunting"
-                                    result_color = "#e74c3c"
-                                else:
-                                    result = "Tidak Stunting"
-                                    result_color = "#2ecc71"
-                                
-                                st.metric("Prediksi", result)
-                                
-                                # Visualisasi probabilitas
-                                fig = px.bar(
-                                    x=['Tidak Stunting', 'Stunting'],
-                                    y=[prob_no_stunting, prob_stunting],
-                                    color=['Tidak Stunting', 'Stunting'],
-                                    color_discrete_map={'Tidak Stunting': '#2ecc71', 'Stunting': '#e74c3c'},
-                                    labels={'x': 'Status', 'y': 'Probabilitas'},
-                                    title='Probabilitas Prediksi'
-                                )
-                                fig.update_layout(height=400, showlegend=False)
-                                st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Jika output multi-class atau softmax (2 nilai: [tidak_stunting, stunting])
-                            else:
-                                prob_no_stunting = float(prediction[0][0])
-                                prob_stunting = float(prediction[0][1]) if len(prediction[0]) > 1 else 0.0
-                                
-                                # Normalisasi jika perlu (softmax sudah normalized)
-                                total = prob_no_stunting + prob_stunting
-                                if total > 0:
-                                    prob_no_stunting = prob_no_stunting / total
-                                    prob_stunting = prob_stunting / total
-                                
-                                # Threshold untuk klasifikasi
-                                if prob_stunting > prob_no_stunting:
-                                    result = "Stunting"
-                                    result_color = "#e74c3c"
-                                else:
-                                    result = "Tidak Stunting"
-                                    result_color = "#2ecc71"
-                                
-                                st.metric("Prediksi", result)
-                                
-                                # Visualisasi probabilitas
-                                fig = px.bar(
-                                    x=['Tidak Stunting', 'Stunting'],
-                                    y=[prob_no_stunting, prob_stunting],
-                                    color=['Tidak Stunting', 'Stunting'],
-                                    color_discrete_map={'Tidak Stunting': '#2ecc71', 'Stunting': '#e74c3c'},
-                                    labels={'x': 'Status', 'y': 'Probabilitas'},
-                                    title='Probabilitas Prediksi'
-                                )
-                                fig.update_layout(height=400, showlegend=False)
-                                st.plotly_chart(fig, use_container_width=True)
-                        
-                        with col2:
-                            st.subheader("Detail Probabilitas")
-                            st.metric("Tidak Stunting", f"{prob_no_stunting*100:.2f}%")
-                            st.metric("Stunting", f"{prob_stunting*100:.2f}%")
-                            
-                            # Progress bar untuk probabilitas - konversi ke float Python
-                            prob_stunting_float = float(prob_stunting)
-                            st.progress(prob_stunting_float, text=f"Risiko Stunting: {prob_stunting*100:.1f}%")
-                            
-                            st.markdown("---")
-                            st.subheader("Rekomendasi")
-                            if result == "Stunting":
-                                st.error("""
-                                **Anak berisiko stunting. Rekomendasi:**
-                                - Konsultasi dengan dokter spesialis anak
-                                - Perbaikan gizi dan pola makan
-                                - Monitoring pertumbuhan berkala
-                                - Pastikan ASI eksklusif jika masih bayi
-                                """)
-                            else:
-                                st.success("""
-                                **Anak tidak berisiko stunting.**
-                                - Tetap jaga pola makan dan gizi seimbang
-                                - Lakukan monitoring rutin
-                                - Pastikan asupan nutrisi tercukupi
-                                """)
-                    
-                    except Exception as e:
-                        st.error(f"Error saat melakukan prediksi: {str(e)}")
-                        st.info("Pastikan struktur input data sesuai dengan yang diharapkan model.")
-
+                        st.subheader("Rekomendasi")
+                        if result == "Stunting":
+                            st.error("""
+                            **Anak berisiko stunting. Rekomendasi:**
+                            - Konsultasi dengan dokter spesialis anak
+                            - Perbaikan gizi dan pola makan
+                            - Monitoring pertumbuhan berkala
+                            - Pastikan ASI eksklusif jika masih bayi
+                            """)
+                        else:
+                            st.success("""
+                            **Anak tidak berisiko stunting.**
+                            - Tetap jaga pola makan dan gizi seimbang
+                            - Lakukan monitoring rutin
+                            - Pastikan asupan nutrisi tercukupi
+                            """)
+                
+                except Exception as e:
+                    st.error(f"Error saat melakukan prediksi: {str(e)}")
