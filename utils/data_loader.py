@@ -4,6 +4,22 @@ import pandas as pd
 from constants import DATASETS
 
 
+def count_stunting(stunting_series):
+    """Hitung jumlah kasus stunting, handle baik numerik maupun string"""
+    if stunting_series.empty:
+        return 0
+    
+    # Cek apakah kolom numerik
+    if pd.api.types.is_numeric_dtype(stunting_series):
+        # Jika numerik, hitung yang == 1 atau > 0
+        return int((stunting_series == 1).sum() if (stunting_series == 1).any() else (stunting_series > 0).sum())
+    else:
+        # Jika string, hitung yang bernilai positif (case-insensitive)
+        stunting_series_lower = stunting_series.astype(str).str.lower().str.strip()
+        positive_values = ['yes', 'stunting', '1', 'true', 'y']
+        return int(stunting_series_lower.isin(positive_values).sum())
+
+
 @st.cache_data
 def load_data():
     """Load dan gabungkan semua dataset menjadi satu"""
@@ -49,7 +65,17 @@ def normalize_column_names(df):
 def create_stunting_label(df):
     """Buat label stunting untuk visualisasi"""
     if 'Stunting' in df.columns:
-        df['Stunting_Label'] = df['Stunting'].map({0: 'Tidak Stunting', 1: 'Stunting'})
+        df = df.copy()
+        # Handle baik numerik maupun string
+        if pd.api.types.is_numeric_dtype(df['Stunting']):
+            df['Stunting_Label'] = df['Stunting'].map({0: 'Tidak Stunting', 1: 'Stunting'})
+        else:
+            # Handle string values
+            stunting_lower = df['Stunting'].astype(str).str.lower().str.strip()
+            positive_values = ['yes', 'stunting', '1', 'true', 'y']
+            df['Stunting_Label'] = stunting_lower.apply(
+                lambda x: 'Stunting' if x in positive_values else 'Tidak Stunting'
+            )
     return df
 
 
@@ -57,13 +83,29 @@ def create_crosstab_melted(df, index_col, value_col='Stunting'):
     """Helper untuk membuat crosstab yang sudah di-melt"""
     crosstab = pd.crosstab(df[index_col], df[value_col])
     crosstab_reset = crosstab.reset_index()
+    
+    # Tentukan value_vars berdasarkan tipe data
+    if pd.api.types.is_numeric_dtype(df[value_col]):
+        value_vars = [0, 1]
+        label_map = {0: 'Tidak Stunting', 1: 'Stunting'}
+    else:
+        # Ambil unique values dari kolom
+        unique_values = df[value_col].unique()
+        value_vars = list(unique_values)
+        # Buat label map untuk string values
+        positive_values = ['yes', 'stunting', '1', 'true', 'y']
+        label_map = {
+            val: 'Stunting' if str(val).lower().strip() in positive_values else 'Tidak Stunting'
+            for val in unique_values
+        }
+    
     melted = pd.melt(
         crosstab_reset,
         id_vars=[index_col],
-        value_vars=[0, 1],
+        value_vars=value_vars,
         var_name=value_col,
         value_name='Jumlah'
     )
-    melted['Stunting_Label'] = melted[value_col].map({0: 'Tidak Stunting', 1: 'Stunting'})
+    melted['Stunting_Label'] = melted[value_col].map(label_map)
     return melted
 

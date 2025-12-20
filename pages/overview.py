@@ -1,6 +1,6 @@
 """Halaman Overview Dashboard"""
 import streamlit as st
-from utils.data_loader import create_crosstab_melted
+from utils.data_loader import create_crosstab_melted, count_stunting
 from utils.visualizations import create_pie_chart, create_bar_chart
 
 
@@ -17,7 +17,7 @@ def render_overview(filtered_df):
     
     with col2:
         if 'Stunting' in filtered_df.columns:
-            stunting_count = filtered_df['Stunting'].sum()
+            stunting_count = count_stunting(filtered_df['Stunting'])
             st.metric("Kasus Stunting", f"{stunting_count:,}")
         else:
             st.metric("Kasus Stunting", "N/A")

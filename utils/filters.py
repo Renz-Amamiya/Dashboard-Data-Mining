@@ -1,22 +1,6 @@
 """Fungsi untuk filter sidebar"""
 import streamlit as st
-import pandas as pd
-
-
-def count_stunting(stunting_series):
-    """Hitung jumlah kasus stunting, handle baik numerik maupun string"""
-    if stunting_series.empty:
-        return 0
-    
-    # Cek apakah kolom numerik
-    if pd.api.types.is_numeric_dtype(stunting_series):
-        # Jika numerik, hitung yang == 1 atau > 0
-        return int((stunting_series == 1).sum() if (stunting_series == 1).any() else (stunting_series > 0).sum())
-    else:
-        # Jika string, hitung yang bernilai positif (case-insensitive)
-        stunting_series_lower = stunting_series.astype(str).str.lower().str.strip()
-        positive_values = ['yes', 'stunting', '1', 'true', 'y']
-        return int(stunting_series_lower.isin(positive_values).sum())
+from utils.data_loader import count_stunting
 
 
 def setup_sidebar_filters(df):

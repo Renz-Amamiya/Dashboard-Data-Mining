@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from utils.visualizations import create_bar_chart
+from utils.data_loader import count_stunting
 from constants import COLORS
 
 
@@ -41,7 +42,11 @@ def render_detail_analysis(filtered_df):
             st.dataframe(asi_analysis, use_container_width=True)
         
         if 'Stunting' in filtered_df.columns:
-            asi_stunt_pct = filtered_df.groupby('ASI_Eksklusif')['Stunting'].agg(['sum', 'count'])
+            # Hitung jumlah stunting per kelompok ASI Eksklusif
+            asi_stunt_pct = filtered_df.groupby('ASI_Eksklusif')['Stunting'].agg([
+                lambda x: count_stunting(x), 'count'
+            ])
+            asi_stunt_pct.columns = ['sum', 'count']
             asi_stunt_pct['Persentase'] = (asi_stunt_pct['sum'] / asi_stunt_pct['count'] * 100).round(2)
             st.subheader("Persentase Stunting berdasarkan ASI Eksklusif")
             st.dataframe(asi_stunt_pct, use_container_width=True)
