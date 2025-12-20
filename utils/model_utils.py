@@ -34,6 +34,7 @@ def _check_h5_structure(model_path):
 def load_model(model_path):
     """Load model H5 dengan berbagai metode fallback"""
     if not MODEL_AVAILABLE:
+        st.error("⚠️ TensorFlow/Keras tidak tersedia. Install dengan: pip install tensorflow")
         return None
     
     if not os.path.exists(model_path):
@@ -51,7 +52,8 @@ def load_model(model_path):
         st.success(f"✅ Model berhasil dimuat menggunakan metode default")
         return model
     except Exception as e1:
-        errors.append(f"Metode 1 (default): {str(e1)}")
+        error_str = str(e1)
+        errors.append(f"Metode 1 (default): {error_str}")
     
     # Metode 2: Load dengan safe_mode=False (untuk TensorFlow 2.16+)
     try:
@@ -77,71 +79,81 @@ def load_model(model_path):
     except Exception as e4:
         errors.append(f"Metode 4 (tf.keras): {str(e4)}")
     
-    # Metode 5: Coba load dengan skip_mismatch jika hanya weights
-    if has_weights and not has_config:
-        try:
-            # Jika hanya weights, kita perlu membuat arsitektur model dulu
-            # Tapi karena kita tidak tahu arsitekturnya, kita coba metode lain
-            st.warning("⚠️ File hanya berisi weights, bukan model lengkap. Mencoba metode alternatif...")
-        except Exception as e5:
-            errors.append(f"Metode 5 (weights only): {str(e5)}")
+    # Metode 5: Coba dengan tf.keras dan safe_mode=False
+    try:
+        model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+        st.success(f"✅ Model berhasil dimuat menggunakan tf.keras dengan safe_mode=False")
+        return model
+    except Exception as e5:
+        errors.append(f"Metode 5 (tf.keras safe_mode=False): {str(e5)}")
     
-    # Metode 6: Coba dengan allow_pickle=True (untuk model lama)
+    # Metode 6: Coba dengan custom_objects=None
     try:
         model = keras.models.load_model(model_path, compile=False, custom_objects=None)
-        st.success(f"✅ Model berhasil dimuat")
+        st.success(f"✅ Model berhasil dimuat dengan custom_objects=None")
         return model
     except Exception as e6:
-        errors.append(f"Metode 6 (allow_pickle): {str(e6)}")
+        errors.append(f"Metode 6 (custom_objects=None): {str(e6)}")
+    
+    # Metode 7: Coba dengan compile=True (beberapa model memerlukan ini)
+    try:
+        model = keras.models.load_model(model_path, compile=True)
+        st.success(f"✅ Model berhasil dimuat dengan compile=True")
+        return model
+    except Exception as e7:
+        errors.append(f"Metode 7 (compile=True): {str(e7)}")
+    
+    # Metode 8: Coba dengan h5py untuk membaca struktur dan load manual
+    try:
+        import h5py
+        with h5py.File(model_path, 'r') as f:
+            if 'model_weights' in f.keys() or 'model_config' in f.keys():
+                # Coba load dengan keras lagi setelah verifikasi struktur
+                model = keras.models.load_model(model_path, compile=False)
+                st.success(f"✅ Model berhasil dimuat setelah verifikasi struktur HDF5")
+                return model
+    except Exception as e8:
+        errors.append(f"Metode 8 (h5py verification): {str(e8)}")
     
     # Jika semua metode gagal, tampilkan error yang lebih informatif
-    error_msg = f"""
-**Error loading model: {model_path}**
-
-**Detail Error:**
-{chr(10).join(f"- {err}" for err in errors)}
-
-**Struktur File HDF5:**
-- Keys ditemukan: {', '.join(h5_keys) if h5_keys else 'Tidak dapat dibaca'}
-- Memiliki config: {has_config if has_config is not None else 'Tidak diketahui'}
-- Memiliki weights: {has_weights if has_weights is not None else 'Tidak diketahui'}
-
-**Kemungkinan penyebab:**
-1. File model corrupt atau tidak valid
-2. Versi TensorFlow/Keras tidak kompatibel (versi saat ini: {tf.__version__ if tf else 'Tidak terdeteksi'})
-3. Model disimpan dengan format yang berbeda
-4. Model hanya berisi weights tanpa config (arsitektur model hilang)
-5. Model dibuat dengan versi TensorFlow yang berbeda
-
-**Solusi:**
-1. **Pastikan model disimpan dengan lengkap:**
-   ```python
-   model.save('best_stunting_model.h5')  # ✅ Benar
-   # Bukan: model.save_weights('best_stunting_model.h5')  # ❌ Salah
-   ```
-
-2. **Update TensorFlow:**
-   ```bash
-   pip install --upgrade tensorflow>=2.13.0
-   ```
-
-3. **Jika model hanya berisi weights:**
-   - Anda perlu membuat ulang arsitektur model yang sama
-   - Kemudian load weights: `model.load_weights('best_stunting_model.h5')`
-
-4. **Cek kompatibilitas versi:**
-   - Pastikan versi TensorFlow yang digunakan untuk load sama dengan versi saat training
-   - Atau coba dengan versi TensorFlow yang lebih baru/lebih lama
-
-5. **Alternatif: Simpan ulang model dengan format yang lebih kompatibel:**
-   ```python
-   # Jika Anda punya akses ke kode training
-   model.save('best_stunting_model.h5', save_format='h5')
-   # Atau gunakan SavedModel format
-   model.save('best_stunting_model_savedmodel')
-   ```
-    """
-    st.error(error_msg)
+    tf_version = tf.__version__ if tf else 'Tidak terdeteksi'
+    file_size_mb = os.path.getsize(model_path) / (1024*1024)
+    
+    # Tampilkan error dengan format yang lebih rapi
+    st.error(f"**❌ Error loading model: {model_path}**")
+    
+    with st.expander("📋 Detail Error", expanded=False):
+        for i, err in enumerate(errors[:5], 1):
+            st.text(f"{i}. {err}")
+        if len(errors) > 5:
+            st.text(f"... dan {len(errors) - 5} error lainnya")
+    
+    with st.expander("ℹ️ Informasi File & Sistem", expanded=False):
+        st.write(f"**Path:** `{os.path.abspath(model_path)}`")
+        st.write(f"**Ukuran:** {file_size_mb:.2f} MB")
+        st.write(f"**Keys HDF5:** {', '.join(h5_keys[:10]) if h5_keys else 'Tidak dapat dibaca'}")
+        st.write(f"**Memiliki config:** {has_config if has_config is not None else 'Tidak diketahui'}")
+        st.write(f"**Memiliki weights:** {has_weights if has_weights is not None else 'Tidak diketahui'}")
+        st.write(f"**Versi TensorFlow:** {tf_version}")
+    
+    st.info("""
+    **💡 Solusi yang bisa dicoba:**
+    
+    1. **Update TensorFlow:**
+       ```bash
+       pip install --upgrade tensorflow
+       ```
+    
+    2. **Atau coba versi spesifik:**
+       ```bash
+       pip install tensorflow==2.13.0
+       ```
+    
+    3. **Pastikan file model valid dan tidak corrupt**
+    
+    4. **Jika masih error, mungkin model dibuat dengan versi TensorFlow yang berbeda**
+    """)
+    
     return None
 
 

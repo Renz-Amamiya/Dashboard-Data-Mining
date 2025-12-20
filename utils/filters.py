@@ -21,7 +21,11 @@ def setup_sidebar_filters(df):
     
     # Filter berdasarkan jenis kelamin
     if 'Sex' in df.columns:
-        sex_options = [val for val in df['Sex'].unique() if pd.notna(val) and str(val).strip() != '']
+        sex_options = [
+            val for val in df['Sex'].unique() 
+            if pd.notna(val) and str(val).strip() != '' 
+            and str(val).strip() not in ['0', '1']
+        ]
         if sex_options:
             sex_filter = st.sidebar.multiselect(
                 "Jenis Kelamin",
@@ -35,7 +39,11 @@ def setup_sidebar_filters(df):
     
     # Filter berdasarkan ASI Eksklusif
     if 'ASI_Eksklusif' in df.columns:
-        asi_options = [val for val in df['ASI_Eksklusif'].unique() if pd.notna(val) and str(val).strip() != '']
+        asi_options = [
+            val for val in df['ASI_Eksklusif'].unique() 
+            if pd.notna(val) and str(val).strip() != '' 
+            and str(val).strip() not in ['0', '1']
+        ]
         if asi_options:
             asi_filter = st.sidebar.multiselect(
                 "ASI Eksklusif",
@@ -54,8 +62,12 @@ def setup_sidebar_filters(df):
             # Jika numeric, jangan tampilkan filter (gunakan semua data)
             stunting_filter = None  # None berarti tidak ada filter
         else:
-            # Jika string/categorical, tampilkan filter seperti biasa
-            stunting_options = [val for val in df['Stunting'].unique() if pd.notna(val) and str(val).strip() != '']
+            # Jika string/categorical, tampilkan filter seperti biasa (tapi filter 0/1)
+            stunting_options = [
+                val for val in df['Stunting'].unique() 
+                if pd.notna(val) and str(val).strip() != '' 
+                and str(val).strip() not in ['0', '1']
+            ]
             if stunting_options:
                 stunting_filter = st.sidebar.multiselect(
                     "Status Stunting",

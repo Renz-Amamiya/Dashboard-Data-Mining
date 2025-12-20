@@ -11,13 +11,17 @@ def render_prediction():
     st.markdown("---")
     
     if not MODEL_AVAILABLE:
-        st.warning("⚠️ TensorFlow/Keras tidak terinstall. Install dengan: pip install tensorflow")
+        st.error("⚠️ TensorFlow/Keras tidak terinstall. Install dengan: `pip install tensorflow`")
+        st.code("pip install tensorflow", language="bash")
         return
     
-    model = load_model(MODEL_PATH)
+    # Tampilkan loading indicator
+    with st.spinner("Memuat model..."):
+        model = load_model(MODEL_PATH)
     
     if model is None:
-        # Error sudah ditampilkan oleh load_model, cukup return
+        # Error sudah ditampilkan oleh load_model
+        st.info("💡 **Tips:** Pastikan file model `best_stunting_model.h5` ada di folder yang sama dengan `dashboard.py`")
         return
     
     with st.expander("Informasi Model"):
