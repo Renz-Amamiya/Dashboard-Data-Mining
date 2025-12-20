@@ -47,19 +47,25 @@ def setup_sidebar_filters(df):
     else:
         asi_filter = []
     
-    # Filter berdasarkan Stunting
+    # Filter berdasarkan Stunting (hanya tampilkan jika bukan numeric 0/1)
     if 'Stunting' in df.columns:
-        stunting_options = [val for val in df['Stunting'].unique() if pd.notna(val) and str(val).strip() != '']
-        if stunting_options:
-            stunting_filter = st.sidebar.multiselect(
-                "Status Stunting",
-                options=stunting_options,
-                default=stunting_options
-            )
+        # Cek apakah kolom Stunting adalah numeric dengan nilai 0/1
+        if pd.api.types.is_numeric_dtype(df['Stunting']):
+            # Jika numeric, jangan tampilkan filter (gunakan semua data)
+            stunting_filter = None  # None berarti tidak ada filter
         else:
-            stunting_filter = []
+            # Jika string/categorical, tampilkan filter seperti biasa
+            stunting_options = [val for val in df['Stunting'].unique() if pd.notna(val) and str(val).strip() != '']
+            if stunting_options:
+                stunting_filter = st.sidebar.multiselect(
+                    "Status Stunting",
+                    options=stunting_options,
+                    default=stunting_options
+                )
+            else:
+                stunting_filter = []
     else:
-        stunting_filter = []
+        stunting_filter = None
     
     # Filter umur
     if 'Age' in df.columns:
@@ -78,7 +84,8 @@ def setup_sidebar_filters(df):
         filtered_df = filtered_df[filtered_df['Sex'].isin(sex_filter)]
     if 'ASI_Eksklusif' in df.columns:
         filtered_df = filtered_df[filtered_df['ASI_Eksklusif'].isin(asi_filter)]
-    if 'Stunting' in df.columns:
+    if 'Stunting' in df.columns and stunting_filter is not None:
+        # Hanya terapkan filter jika stunting_filter bukan None (bukan numeric)
         filtered_df = filtered_df[filtered_df['Stunting'].isin(stunting_filter)]
     if 'Age' in df.columns:
         filtered_df = filtered_df[(filtered_df['Age'] >= age_range[0]) & (filtered_df['Age'] <= age_range[1])]

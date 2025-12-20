@@ -1,5 +1,6 @@
 """Halaman Analisis Visual"""
 import streamlit as st
+import pandas as pd
 import plotly.express as px
 from utils.visualizations import create_histogram, create_scatter, create_box_plot
 
@@ -80,16 +81,56 @@ def render_visual_analysis(filtered_df):
     
     elif viz_type == "Heatmap Korelasi":
         st.subheader("Heatmap Korelasi Variabel Numerik")
-        numeric_cols = [c for c in ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length', 'Stunting'] if c in filtered_df.columns]
+        
+        # Ambil kolom yang mungkin numeric
+        potential_cols = ['Age', 'Birth_Weight', 'Birth_Length', 'Body_Weight', 'Body_Length']
+        
+        # Filter hanya kolom yang benar-benar numeric dan ada di dataframe
+        numeric_cols = []
+        for col in potential_cols:
+            if col in filtered_df.columns:
+                # Cek apakah kolom numeric
+                if pd.api.types.is_numeric_dtype(filtered_df[col]):
+                    # Coba konversi ke float untuk memastikan
+                    try:
+                        test_series = pd.to_numeric(filtered_df[col], errors='coerce')
+                        if not test_series.isna().all():  # Pastikan ada nilai yang valid
+                            numeric_cols.append(col)
+                    except:
+                        pass
+        
         if len(numeric_cols) >= 2:
-            corr_matrix = filtered_df[numeric_cols].corr()
-            fig = px.imshow(
-                corr_matrix,
-                text_auto=True,
-                aspect="auto",
-                color_continuous_scale='RdBu',
-                labels=dict(x="Variabel", y="Variabel", color="Korelasi")
-            )
-            fig.update_layout(height=600)
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                # Ambil subset dataframe dengan kolom numeric saja
+                df_numeric = filtered_df[numeric_cols].copy()
+                
+                # Pastikan semua kolom bisa dikonversi ke float
+                for col in df_numeric.columns:
+                    df_numeric[col] = pd.to_numeric(df_numeric[col], errors='coerce')
+                
+                # Hapus baris dengan semua nilai NaN
+                df_numeric = df_numeric.dropna(how='all')
+                
+                # Hapus kolom yang semua nilainya NaN
+                df_numeric = df_numeric.dropna(axis=1, how='all')
+                
+                # Pastikan masih ada minimal 2 kolom
+                if len(df_numeric.columns) >= 2 and len(df_numeric) > 0:
+                    corr_matrix = df_numeric.corr()
+                    fig = px.imshow(
+                        corr_matrix,
+                        text_auto=True,
+                        aspect="auto",
+                        color_continuous_scale='RdBu',
+                        labels=dict(x="Variabel", y="Variabel", color="Korelasi")
+                    )
+                    fig.update_layout(height=600)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("Tidak cukup data numeric yang valid untuk membuat heatmap korelasi.")
+            except Exception as e:
+                st.error(f"Error saat menghitung korelasi: {str(e)}")
+                st.info("Pastikan kolom-kolom numeric memiliki nilai yang valid.")
+        else:
+            st.warning("Tidak cukup kolom numeric untuk membuat heatmap korelasi (minimal 2 kolom).")
 
