@@ -15,17 +15,59 @@ except ImportError:
 
 @st.cache_resource
 def load_model(model_path):
-    """Load model H5"""
+    """Load model H5 dengan berbagai metode fallback"""
     if not MODEL_AVAILABLE:
         return None
+    
+    if not os.path.exists(model_path):
+        return None
+    
+    # Metode 1: Load model lengkap (default)
     try:
-        if os.path.exists(model_path):
-            model = keras.models.load_model(model_path)
+        model = keras.models.load_model(model_path, compile=False)
+        return model
+    except Exception as e1:
+        # Metode 2: Coba load dengan safe_mode=False (untuk TensorFlow 2.16+)
+        try:
+            model = keras.models.load_model(model_path, compile=False, safe_mode=False)
             return model
-        return None
-    except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-        return None
+        except Exception as e2:
+            # Metode 3: Coba load sebagai SavedModel format
+            try:
+                import tensorflow as tf
+                model = tf.keras.models.load_model(model_path, compile=False)
+                return model
+            except Exception as e3:
+                # Metode 4: Coba load weights saja (jika model hanya berisi weights)
+                try:
+                    # Jika model hanya weights, kita perlu membuat arsitektur dulu
+                    # Tapi kita tidak tahu arsitekturnya, jadi kita skip metode ini
+                    pass
+                except:
+                    pass
+                
+                # Jika semua metode gagal, tampilkan error yang lebih informatif
+                error_msg = f"""
+**Error loading model: {model_path}**
+
+**Detail Error:**
+- Metode 1 (default): {str(e1)}
+- Metode 2 (safe_mode=False): {str(e2)}
+- Metode 3 (tf.keras): {str(e3)}
+
+**Kemungkinan penyebab:**
+1. File model corrupt atau tidak valid
+2. Versi TensorFlow/Keras tidak kompatibel
+3. Model disimpan dengan format yang berbeda
+4. Model hanya berisi weights tanpa config
+
+**Solusi:**
+- Pastikan model disimpan dengan `model.save()` bukan hanya `model.save_weights()`
+- Cek versi TensorFlow: `pip install tensorflow>=2.13.0`
+- Jika model hanya weights, perlu membuat arsitektur model terlebih dahulu
+                """
+                st.error(error_msg)
+                return None
 
 
 def preprocess_input(sex, age, birth_weight, birth_length, body_weight, body_length, asi):
