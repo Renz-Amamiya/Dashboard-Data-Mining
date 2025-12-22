@@ -90,7 +90,13 @@ def render_prediction():
         )
         
         try:
-            prediction = model.predict(input_data, verbose=0)
+            # Cek apakah model adalah sklearn atau keras
+            if hasattr(model, 'predict_proba'):
+                # sklearn model
+                prediction = model.predict_proba(input_data)
+            else:
+                # keras model
+                prediction = model.predict(input_data, verbose=0)
             prob_no_stunting, prob_stunting, result = interpret_prediction(prediction)
             
             st.markdown("### Hasil Prediksi")
