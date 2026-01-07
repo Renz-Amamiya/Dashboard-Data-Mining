@@ -334,15 +334,35 @@ def preprocess_input(sex, age, birth_weight, birth_length, body_weight, body_len
             import pickle
             with open(scaler_path, 'rb') as f:
                 scaler_data = pickle.load(f)
-            scaler = scaler_data['scaler']
+            
+            # Handle both dict format and direct scaler format
+            if isinstance(scaler_data, dict):
+                scaler = scaler_data.get('scaler', scaler_data)
+            else:
+                scaler = scaler_data
+            
+            # Validate feature count
+            if hasattr(scaler, 'n_features_in_'):
+                if scaler.n_features_in_ != len(features):
+                    # Only show warning once per session
+                    if 'scaler_feature_mismatch' not in st.session_state:
+                        st.warning(f"⚠️ Jumlah fitur tidak sesuai! Scaler mengharapkan {scaler.n_features_in_} fitur, tetapi mendapat {len(features)} fitur.")
+                        st.session_state.scaler_feature_mismatch = True
+                    return features_array
+            
             features_scaled = scaler.transform(features_array)
             return features_scaled.astype(np.float32)
         except Exception as e:
-            # If scaler fails, return unscaled features with warning
-            print(f"Warning: Could not apply scaler: {e}")
+            # If scaler fails, show warning in Streamlit only once per session
+            if 'scaler_error_shown' not in st.session_state:
+                st.warning(f"⚠️ Tidak dapat menerapkan scaler: {str(e)}. Menggunakan fitur tanpa scaling.")
+                st.session_state.scaler_error_shown = True
             return features_array
     else:
-        # No scaler found, return unscaled features
+        # No scaler found, show info only once per session
+        if 'scaler_not_found_shown' not in st.session_state:
+            st.info(f"ℹ️ File scaler tidak ditemukan di: {scaler_path}. Menggunakan fitur tanpa scaling.")
+            st.session_state.scaler_not_found_shown = True
         return features_array
 
 

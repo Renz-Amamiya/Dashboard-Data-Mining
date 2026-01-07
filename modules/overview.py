@@ -68,7 +68,7 @@ def render_overview(filtered_df):
                 names,
                 "Distribusi Status Stunting"
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width='stretch')
         
         with col2:
             if 'Sex' in filtered_df.columns:
@@ -81,7 +81,7 @@ def render_overview(filtered_df):
                     'Stunting_Label',
                     "Distribusi berdasarkan Jenis Kelamin"
                 )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_bar, width='stretch')
         
         # Grafik ASI Eksklusif
         if 'ASI_Eksklusif' in filtered_df.columns:
@@ -94,5 +94,5 @@ def render_overview(filtered_df):
                 'Stunting_Label',
                 "Pengaruh ASI Eksklusif terhadap Stunting"
             )
-            st.plotly_chart(fig_asi, use_container_width=True)
+            st.plotly_chart(fig_asi, width='stretch')
 

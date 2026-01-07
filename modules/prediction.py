@@ -84,12 +84,21 @@ def render_prediction():
     st.markdown("---")
     
     if st.button("Prediksi Stunting", type="primary", use_container_width=True):
-        input_data = preprocess_input(
-            sex_input, age_input, birth_weight, birth_length,
-            body_weight, body_length, asi_input
-        )
-        
         try:
+            input_data = preprocess_input(
+                sex_input, age_input, birth_weight, birth_length,
+                body_weight, body_length, asi_input
+            )
+            
+            # Validasi shape input
+            if hasattr(model, 'input_shape') and model.input_shape:
+                expected_features = model.input_shape[1] if len(model.input_shape) > 1 else model.input_shape[0]
+                actual_features = input_data.shape[1]
+                if expected_features != actual_features:
+                    st.error(f"❌ **Error:** Jumlah fitur tidak sesuai! Model mengharapkan {expected_features} fitur, tetapi mendapat {actual_features} fitur.")
+                    st.info("💡 Pastikan file `feature_scaler.pkl` sesuai dengan model yang digunakan.")
+                    return
+            
             # Cek apakah model adalah sklearn atau keras
             if hasattr(model, 'predict_proba'):
                 # sklearn model
@@ -97,6 +106,7 @@ def render_prediction():
             else:
                 # keras model
                 prediction = model.predict(input_data, verbose=0)
+            
             prob_no_stunting, prob_stunting, result = interpret_prediction(prediction)
             
             st.markdown("### Hasil Prediksi")
@@ -115,7 +125,7 @@ def render_prediction():
                     title='Probabilitas Prediksi'
                 )
                 fig.update_layout(height=400, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             
             with col2:
                 st.subheader("Detail Probabilitas")
@@ -142,5 +152,17 @@ def render_prediction():
                 """)
         
         except Exception as e:
-            st.error(f"Error saat melakukan prediksi: {str(e)}")
+            import traceback
+            st.error(f"**❌ Error saat melakukan prediksi:**")
+            st.error(f"```\n{str(e)}\n```")
+            with st.expander("🔍 Detail Error (untuk debugging)"):
+                st.code(traceback.format_exc(), language="python")
+            
+            st.info("""
+            **💡 Tips untuk mengatasi error:**
+            - Pastikan semua input sudah diisi dengan benar
+            - Pastikan model berhasil dimuat (lihat informasi model di atas)
+            - Pastikan file `feature_scaler.pkl` ada dan valid
+            - Cek apakah jumlah fitur sesuai dengan yang diharapkan model
+            """)
 

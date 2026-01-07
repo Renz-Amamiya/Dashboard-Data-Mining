@@ -33,7 +33,7 @@ def render_visual_analysis(filtered_df):
     if viz_type == "Distribusi Umur":
         st.subheader("Distribusi Umur berdasarkan Status Stunting")
         fig = create_histogram(filtered_df, 'Age', 'Stunting', "Distribusi Umur")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     elif viz_type == "Hubungan Berat & Panjang Badan":
         st.subheader("Hubungan Berat Badan vs Panjang Badan")
@@ -45,7 +45,7 @@ def render_visual_analysis(filtered_df):
             'Age' if 'Age' in filtered_df.columns else None,
             "Hubungan Berat Badan vs Panjang Badan"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     elif viz_type == "Hubungan Berat & Panjang Lahir":
         st.subheader("Hubungan Berat Lahir vs Panjang Lahir")
@@ -57,27 +57,27 @@ def render_visual_analysis(filtered_df):
             'Age' if 'Age' in filtered_df.columns else None,
             "Hubungan Berat Lahir vs Panjang Lahir"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     elif viz_type == "Distribusi Berat Badan":
         st.subheader("Distribusi Berat Badan")
         col1, col2 = st.columns(2)
         with col1:
             fig1 = create_box_plot(filtered_df, 'Stunting', 'Body_Weight', 'Stunting', "Box Plot Berat Badan")
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width='stretch')
         with col2:
             fig2 = create_histogram(filtered_df, 'Body_Weight', 'Stunting', "Histogram Berat Badan")
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width='stretch')
     
     elif viz_type == "Distribusi Panjang Badan":
         st.subheader("Distribusi Panjang Badan")
         col1, col2 = st.columns(2)
         with col1:
             fig1 = create_box_plot(filtered_df, 'Stunting', 'Body_Length', 'Stunting', "Box Plot Panjang Badan")
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, width='stretch')
         with col2:
             fig2 = create_histogram(filtered_df, 'Body_Length', 'Stunting', "Histogram Panjang Badan")
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width='stretch')
     
     elif viz_type == "Heatmap Korelasi":
         st.subheader("Heatmap Korelasi Variabel Numerik")
@@ -125,7 +125,7 @@ def render_visual_analysis(filtered_df):
                         labels=dict(x="Variabel", y="Variabel", color="Korelasi")
                     )
                     fig.update_layout(height=600)
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 else:
                     st.warning("Tidak cukup data numeric yang valid untuk membuat heatmap korelasi.")
             except Exception as e:

@@ -1,5 +1,22 @@
 """Halaman Data Explorer"""
 import streamlit as st
+import pandas as pd
+
+
+def _prepare_dataframe_for_display(df):
+    """Persiapkan DataFrame untuk ditampilkan dengan memastikan kompatibilitas Arrow"""
+    df_display = df.copy()
+    
+    # Konversi kolom object ke string untuk kompatibilitas Arrow
+    for col in df_display.columns:
+        if df_display[col].dtype == 'object':
+            # Coba konversi ke string, jika gagal biarkan seperti semula
+            try:
+                df_display[col] = df_display[col].astype(str)
+            except:
+                pass
+    
+    return df_display
 
 
 def render_data_explorer(filtered_df):
@@ -8,7 +25,9 @@ def render_data_explorer(filtered_df):
     st.markdown("---")
     
     st.subheader("Tabel Data")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
+    # Persiapkan DataFrame untuk kompatibilitas Arrow
+    display_df = _prepare_dataframe_for_display(filtered_df)
+    st.dataframe(display_df, width='stretch', height=400)
     
     csv = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button(
