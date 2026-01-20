@@ -1,5 +1,3 @@
----
-
 # 📊 Dashboard Data Mining
 
 ## 📌 Deskripsi Proyek
@@ -8,7 +6,6 @@ Proyek ini adalah sebuah **Dashboard Interaktif** berbasis web yang digunakan un
 
 Tujuan utama dari dashboard ini adalah untuk mentransformasi data mentah menjadi wawasan (insight) yang dapat membantu proses pengambilan keputusan.
 
----
 
 ## 🚀 Fitur Utama
 
@@ -18,7 +15,6 @@ Tujuan utama dari dashboard ini adalah untuk mentransformasi data mentah menjadi
 * **Evaluation Metrics:** Menampilkan performa model seperti Akurasi, Confusion Matrix, atau MAE/MSE.
 * **Interactive Charts:** Grafik interaktif menggunakan Plotly/Matplotlib untuk analisis sebaran data.
 
----
 
 ## 🛠️ Teknologi yang Digunakan
 
@@ -27,7 +23,6 @@ Tujuan utama dari dashboard ini adalah untuk mentransformasi data mentah menjadi
 * **Visualisasi:** Matplotlib, Seaborn / Plotly
 * **Web Framework:** Streamlit (untuk antarmuka dashboard)
 
----
 
 ## 🏗️ Alur Kerja (Workflow)
 
@@ -38,7 +33,6 @@ Sistem ini bekerja melalui tahapan standar Data Mining (CRISP-DM):
 3. **Modeling:** Melatih model menggunakan algoritma (seperti KNN / Naive Bayes / Decision Tree).
 4. **Deployment:** Mengintegrasikan model yang telah dilatih ke dalam dashboard Streamlit.
 
----
 
 ## 💻 Cara Instalasi & Penggunaan Lokal
 
@@ -76,7 +70,6 @@ streamlit run app.py
 
 
 
----
 
 ## 📂 Struktur Folder
 
@@ -91,13 +84,11 @@ Dashboard-Data-Mining/
 
 ```
 
----
 
 ## 🤝 Kontribusi
 
 Kontribusi selalu terbuka! Jika Anda ingin meningkatkan fitur atau memperbaiki bug, silakan lakukan *fork* pada repositori ini dan buat *pull request*.
 
----
 
 ## ✉️ Kontak
 
@@ -106,8 +97,5 @@ Jika ada pertanyaan lebih lanjut, silakan hubungi saya melalui:
 * **Instagram:** [@Amami_Renz](https://www.google.com/search?q=https://instagram.com/Amami_Rents)
 * **GitHub:** [Renz-Amamiya](https://www.google.com/search?q=https://github.com/Renz-Amamiya)
 
----
 
 > *Proyek ini dikembangkan sebagai bagian dari studi Teknik Informatika di Universitas Dian Nuswantoro.*
-
----
